@@ -1,12 +1,44 @@
 from argparse import ArgumentParser
-
+import logging
+import os
 from flask import Flask, jsonify, request
+import flask.cli
+flask.cli.show_server_banner = lambda *args: None
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Configure file logging for heartbeats
+heartbeat_logger = logging.getLogger('heartbeats')
+heartbeat_logger.setLevel(logging.INFO)
+# Clear existing handlers to avoid duplicates on reload
+if heartbeat_logger.hasHandlers():
+    heartbeat_logger.handlers.clear()
+file_handler = logging.FileHandler('logs/skyron.log')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+heartbeat_logger.addHandler(file_handler)
+
+# Suppress development headers and heartbeats from the console
+class QuietFilter(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        # Suppress heartbeats and reroute to file
+        if "/chain" in msg:
+            heartbeat_logger.info(f"HEARTBEAT: {msg}")
+            return False
+        # Suppress dev server warnings
+        if "development server" in msg or "production deployment" in msg:
+            return False
+        return True
+
+# Apply filter to werkzeug to silence console spam
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.addFilter(QuietFilter())
 
 from skyron.node import Node
 from skyron.miner import Miner
 from skyron.blockchain import BlockChain
 from skyron.transaction import Transaction
-
 
 app = Flask('sky-ron')
 
